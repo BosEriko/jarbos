@@ -8,22 +8,46 @@ Desktop companion that shows small animated avatars for AI coding agents (Claude
 - Process start/stop transitions drive an agent state machine (`Active` → `Sleeping` → `Hidden`) in Rust.
 - State changes are pushed to the frontend via Tauri events (plus a query command to hydrate current state on startup); the frontend renders/animates placeholder avatars in a transparent, click-through, always-on-top overlay window at the bottom of the screen.
 
-## Prerequisites
+## Getting started on a fresh machine
 
-- Node.js (LTS) and pnpm (`corepack enable`, or `npm i -g pnpm`)
-- Rust toolchain via [rustup](https://rustup.rs)
-- Platform build tools:
-  - macOS: Xcode Command Line Tools (`xcode-select --install`)
-  - Windows: Microsoft Visual Studio C++ Build Tools + WebView2 (see [Tauri prerequisites](https://tauri.app/start/prerequisites/))
+These steps assume nothing is installed yet. Skip whatever you already have.
 
-## Development
+**1. Install platform build tools**
+
+- macOS:
+  ```bash
+  xcode-select --install
+  ```
+- Windows: install the [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (select the "Desktop development with C++" workload) and make sure [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) is installed (it ships with Windows 11 and most recent Windows 10 updates already). Full details: [Tauri prerequisites](https://tauri.app/start/prerequisites/).
+
+**2. Install Rust**
 
 ```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"   # or restart your shell
+```
+(Windows: download and run [rustup-init.exe](https://rustup.rs) instead.)
+
+**3. Install Node.js and pnpm**
+
+Install Node.js LTS from [nodejs.org](https://nodejs.org) (or via `nvm`/`fnm`), then:
+
+```bash
+corepack enable
+```
+
+**4. Clone and run**
+
+```bash
+git clone git@github.com:BosEriko/jarbos.git
+cd jarbos
 pnpm install
 pnpm tauri dev
 ```
 
-This starts Vite (frontend, hot-reload) and builds/runs the Rust backend, opening the overlay window. Since `claude`/`codex` processes are detected system-wide (not tied to a specific terminal), you can test by opening a separate terminal and running `claude` or `codex` normally, then watching the overlay.
+(This repo is also mirrored to GitLab and Bitbucket under the same `BosEriko/jarbos` path, if you prefer one of those remotes.)
+
+The first `pnpm tauri dev` compiles every Rust dependency from scratch and takes a couple of minutes; subsequent runs are much faster (incremental Rust build + Vite hot-reload). Once it's up, an overlay window appears at the bottom of your screen. `claude`/`codex` processes are detected system-wide — open a separate terminal and run `claude` or `codex` normally to see their avatar appear.
 
 ### Checks
 
