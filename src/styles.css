@@ -1,0 +1,92 @@
+:root {
+  color-scheme: light dark;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}
+
+#avatar-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.avatar {
+  position: absolute;
+  left: 0;
+  bottom: var(--avatar-bottom-margin, 24px);
+  width: var(--avatar-size, 64px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  opacity: 1;
+  transition: opacity 0.6s ease;
+}
+
+.avatar.is-hidden {
+  opacity: 0;
+}
+
+.avatar-label {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent, #333);
+  text-shadow:
+    0 0 3px rgba(255, 255, 255, 0.9),
+    0 0 3px rgba(255, 255, 255, 0.9);
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.avatar-sprite {
+  font-size: 40px;
+  line-height: 1;
+  text-align: center;
+}
+
+.avatar-glyph {
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.avatar-glyph.facing-left {
+  transform: scaleX(-1);
+}
+
+.avatar[data-state="active"] .avatar-sprite.is-walking {
+  animation: walk-bob 0.5s ease-in-out infinite;
+}
+
+.avatar[data-state="sleeping"] .avatar-sprite {
+  animation: sleep-breathe 2.2s ease-in-out infinite;
+  filter: grayscale(0.7) brightness(0.85);
+}
+
+@keyframes walk-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes sleep-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.94);
+  }
+}
