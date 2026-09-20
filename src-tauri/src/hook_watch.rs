@@ -8,9 +8,13 @@ use crate::process_monitor::CwdByInstance;
 
 pub const POLL_INTERVAL: Duration = Duration::from_millis(300);
 
-fn classify_event(hook_event_name: &str) -> Option<bool> {
+fn classify_event(hook_event_name: &str, notification_type: Option<&str>) -> Option<bool> {
     match hook_event_name {
-        "Notification" | "PermissionRequest" => Some(true),
+        "Notification" => match notification_type {
+            Some("permission_prompt") => Some(true),
+            _ => None,
+        },
+        "PermissionRequest" => Some(true),
         "PreToolUse" | "UserPromptSubmit" | "Stop" => Some(false),
         _ => None,
     }
@@ -47,7 +51,8 @@ fn process_event_file(
     let Some(cwd) = payload.get("cwd").and_then(|v| v.as_str()) else {
         return;
     };
-    let Some(waiting) = classify_event(hook_event_name) else {
+    let notification_type = payload.get("notification_type").and_then(|v| v.as_str());
+    let Some(waiting) = classify_event(hook_event_name, notification_type) else {
         return;
     };
 
@@ -87,22 +92,31 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     #[test]
-    fn classifies_permission_and_notification_as_waiting() {
-        assert_eq!(classify_event("Notification"), Some(true));
-        assert_eq!(classify_event("PermissionRequest"), Some(true));
+    fn classifies_permission_prompt_notification_as_waiting() {
+        assert_eq!(
+            classify_event("Notification", Some("permission_prompt")),
+            Some(true)
+        );
+        assert_eq!(classify_event("PermissionRequest", None), Some(true));
+    }
+
+    #[test]
+    fn ignores_idle_and_other_notification_types() {
+        assert_eq!(classify_event("Notification", Some("idle_timeout")), None);
+        assert_eq!(classify_event("Notification", None), None);
     }
 
     #[test]
     fn classifies_resume_events_as_not_waiting() {
-        assert_eq!(classify_event("PreToolUse"), Some(false));
-        assert_eq!(classify_event("UserPromptSubmit"), Some(false));
-        assert_eq!(classify_event("Stop"), Some(false));
+        assert_eq!(classify_event("PreToolUse", None), Some(false));
+        assert_eq!(classify_event("UserPromptSubmit", None), Some(false));
+        assert_eq!(classify_event("Stop", None), Some(false));
     }
 
     #[test]
     fn ignores_unknown_event_names() {
-        assert_eq!(classify_event("SessionStart"), None);
-        assert_eq!(classify_event("PostToolUse"), None);
+        assert_eq!(classify_event("SessionStart", None), None);
+        assert_eq!(classify_event("PostToolUse", None), None);
     }
 
     #[test]
