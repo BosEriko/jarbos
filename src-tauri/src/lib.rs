@@ -163,7 +163,7 @@ pub fn run() {
             app.manage(Arc::clone(&settings));
             let initial_settings = settings.lock().unwrap().clone();
 
-            let tray_icon = Image::from_bytes(include_bytes!("../icons/tray-duck.png"))?;
+            let tray_icon = Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
             let toggle_visibility_item = MenuItem::with_id(
                 app,
                 "toggle_visibility",
