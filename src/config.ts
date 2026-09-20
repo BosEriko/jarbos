@@ -20,7 +20,15 @@ export const AGENT_CONFIGS: AgentDisplayConfig[] = [
   },
 ];
 
-export const AVATAR_SIZE = 64;
+export const AVATAR_SPRITE_RATIO = 48 / 64;
+
+export let AVATAR_SIZE = 64;
+
+export function setAvatarSize(size: number): number {
+  AVATAR_SIZE = size;
+  return AVATAR_SIZE;
+}
+
 export const BOTTOM_MARGIN = 0;
 export const FADE_OUT_MS = 600;
 

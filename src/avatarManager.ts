@@ -14,6 +14,7 @@ export class AvatarManager {
   private lastFrameTime: number | null = null;
   private rafHandle: number | null = null;
   private rectReportAccumulatorMs = 0;
+  private ducksHidden = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -62,6 +63,21 @@ export class AvatarManager {
     avatar.applyState(state);
   }
 
+  setDucksHidden(hidden: boolean): void {
+    this.ducksHidden = hidden;
+    this.container.classList.toggle("ducks-hidden", hidden);
+  }
+
+  setNamesHidden(hidden: boolean): void {
+    this.container.classList.toggle("names-hidden", hidden);
+  }
+
+  setAvatarSize(size: number): void {
+    for (const avatar of this.avatars.values()) {
+      avatar.movement.setWidth(size);
+    }
+  }
+
   private tick(now: number): void {
     const dt = this.lastFrameTime === null ? 0 : now - this.lastFrameTime;
     this.lastFrameTime = now;
@@ -77,7 +93,9 @@ export class AvatarManager {
     this.rectReportAccumulatorMs += dt;
     if (this.rectReportAccumulatorMs >= RECT_REPORT_INTERVAL_MS) {
       this.rectReportAccumulatorMs = 0;
-      const rects = Array.from(this.avatars.values()).map((avatar) => avatar.getRect());
+      const rects = this.ducksHidden
+        ? []
+        : Array.from(this.avatars.values()).map((avatar) => avatar.getRect());
       void invoke("update_avatar_rects", { rects });
     }
 

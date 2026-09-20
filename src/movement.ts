@@ -33,7 +33,7 @@ export class Movement {
   private speed: number;
   private phase: Phase;
   private phaseRemainingMs: number;
-  private readonly avatarWidth: number;
+  private avatarWidth: number;
   private readonly config: MovementConfig;
 
   constructor(
@@ -55,6 +55,10 @@ export class Movement {
 
   get isWalking(): boolean {
     return this.phase === "walking";
+  }
+
+  setWidth(width: number): void {
+    this.avatarWidth = width;
   }
 
   update(dtMs: number, viewportWidth: number): void {
