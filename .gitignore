@@ -13,6 +13,8 @@ dist-ssr
 *.local
 
 .last_sync
+.claude_hook_initialized
+.codex_hook_initialized
 
 # Editor directories and files
 .vscode/*
