@@ -13,7 +13,13 @@ export interface Agent {
   state: AgentState;
 }
 
+export interface InstanceState {
+  agentId: string;
+  state: AgentState;
+}
+
 export interface AgentStateChangedPayload {
-  id: string;
+  instanceId: string;
+  agentId: string;
   state: AgentState;
 }

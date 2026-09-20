@@ -20,7 +20,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   manager.start();
 
   const currentStates = await fetchCurrentStates();
-  for (const [id, state] of Object.entries(currentStates)) {
-    manager.applyState(id, state);
+  for (const [instanceId, { agentId, state }] of Object.entries(currentStates)) {
+    manager.applyState(instanceId, agentId, state);
   }
 });

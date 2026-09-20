@@ -29,10 +29,17 @@ body {
   align-items: center;
   opacity: 1;
   transition: opacity 0.6s ease;
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
 }
 
 .avatar.is-hidden {
   opacity: 0;
+}
+
+.avatar.is-dragging {
+  cursor: grabbing;
 }
 
 .avatar-label {

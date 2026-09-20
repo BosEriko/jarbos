@@ -4,17 +4,26 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use serde::Serialize;
+
 use crate::agent::AgentState;
 use crate::process_monitor::ProcessEvent;
 
 pub const SLEEP_DURATION: Duration = Duration::from_secs(6);
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceState {
+    pub agent_id: String,
+    pub state: AgentState,
+}
+
 type Generations = Arc<Mutex<HashMap<String, u64>>>;
-pub type SharedStates = Arc<Mutex<HashMap<String, AgentState>>>;
+pub type SharedStates = Arc<Mutex<HashMap<String, InstanceState>>>;
 
 pub fn run<F>(rx: Receiver<ProcessEvent>, on_change: F) -> SharedStates
 where
-    F: Fn(&str, AgentState) + Send + Sync + 'static,
+    F: Fn(&str, &str, AgentState) + Send + Sync + 'static,
 {
     run_with_sleep_duration(rx, on_change, SLEEP_DURATION)
 }
@@ -25,7 +34,7 @@ fn run_with_sleep_duration<F>(
     sleep_duration: Duration,
 ) -> SharedStates
 where
-    F: Fn(&str, AgentState) + Send + Sync + 'static,
+    F: Fn(&str, &str, AgentState) + Send + Sync + 'static,
 {
     let on_change = Arc::new(on_change);
     let generations: Generations = Arc::new(Mutex::new(HashMap::new()));
@@ -35,13 +44,31 @@ where
     thread::spawn(move || {
         for event in rx {
             match event {
-                ProcessEvent::Started(id) => {
-                    bump_generation(&generations, &id);
-                    record(&thread_states, &on_change, &id, AgentState::Active);
+                ProcessEvent::Started {
+                    agent_id,
+                    instance_id,
+                } => {
+                    bump_generation(&generations, &instance_id);
+                    record(
+                        &thread_states,
+                        &on_change,
+                        &instance_id,
+                        &agent_id,
+                        AgentState::Active,
+                    );
                 }
-                ProcessEvent::Stopped(id) => {
-                    record(&thread_states, &on_change, &id, AgentState::Sleeping);
-                    let expected_generation = bump_generation(&generations, &id);
+                ProcessEvent::Stopped {
+                    agent_id,
+                    instance_id,
+                } => {
+                    record(
+                        &thread_states,
+                        &on_change,
+                        &instance_id,
+                        &agent_id,
+                        AgentState::Sleeping,
+                    );
+                    let expected_generation = bump_generation(&generations, &instance_id);
 
                     let generations = Arc::clone(&generations);
                     let on_change = Arc::clone(&on_change);
@@ -51,12 +78,18 @@ where
                         let is_still_sleeping = generations
                             .lock()
                             .unwrap()
-                            .get(&id)
+                            .get(&instance_id)
                             .copied()
                             .map(|current| current == expected_generation)
                             .unwrap_or(false);
                         if is_still_sleeping {
-                            record(&states, &on_change, &id, AgentState::Hidden);
+                            record(
+                                &states,
+                                &on_change,
+                                &instance_id,
+                                &agent_id,
+                                AgentState::Hidden,
+                            );
                         }
                     });
                 }
@@ -67,17 +100,28 @@ where
     states
 }
 
-fn record<F>(states: &SharedStates, on_change: &Arc<F>, id: &str, state: AgentState)
-where
-    F: Fn(&str, AgentState) + Send + Sync + 'static,
+fn record<F>(
+    states: &SharedStates,
+    on_change: &Arc<F>,
+    instance_id: &str,
+    agent_id: &str,
+    state: AgentState,
+) where
+    F: Fn(&str, &str, AgentState) + Send + Sync + 'static,
 {
-    states.lock().unwrap().insert(id.to_string(), state);
-    on_change(id, state);
+    states.lock().unwrap().insert(
+        instance_id.to_string(),
+        InstanceState {
+            agent_id: agent_id.to_string(),
+            state,
+        },
+    );
+    on_change(instance_id, agent_id, state);
 }
 
-fn bump_generation(generations: &Generations, id: &str) -> u64 {
+fn bump_generation(generations: &Generations, instance_id: &str) -> u64 {
     let mut map = generations.lock().unwrap();
-    let counter = map.entry(id.to_string()).or_insert(0);
+    let counter = map.entry(instance_id.to_string()).or_insert(0);
     *counter += 1;
     *counter
 }
@@ -90,12 +134,12 @@ mod tests {
     fn collect_events(
         rx: Receiver<ProcessEvent>,
         sleep_duration: Duration,
-    ) -> mpsc::Receiver<(String, AgentState)> {
-        let (out_tx, out_rx) = mpsc::channel::<(String, AgentState)>();
+    ) -> mpsc::Receiver<(String, String, AgentState)> {
+        let (out_tx, out_rx) = mpsc::channel::<(String, String, AgentState)>();
         run_with_sleep_duration(
             rx,
-            move |id: &str, state: AgentState| {
-                let _ = out_tx.send((id.to_string(), state));
+            move |instance_id: &str, agent_id: &str, state: AgentState| {
+                let _ = out_tx.send((instance_id.to_string(), agent_id.to_string(), state));
             },
             sleep_duration,
         );
@@ -107,10 +151,15 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let out_rx = collect_events(rx, Duration::from_millis(50));
 
-        tx.send(ProcessEvent::Started("claude".to_string()))
-            .unwrap();
-        let (id, state) = out_rx.recv_timeout(Duration::from_millis(200)).unwrap();
-        assert_eq!(id, "claude");
+        tx.send(ProcessEvent::Started {
+            agent_id: "claude".to_string(),
+            instance_id: "1".to_string(),
+        })
+        .unwrap();
+        let (instance_id, agent_id, state) =
+            out_rx.recv_timeout(Duration::from_millis(200)).unwrap();
+        assert_eq!(instance_id, "1");
+        assert_eq!(agent_id, "claude");
         assert_eq!(state, AgentState::Active);
     }
 
@@ -119,12 +168,16 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let out_rx = collect_events(rx, Duration::from_millis(30));
 
-        tx.send(ProcessEvent::Stopped("codex".to_string())).unwrap();
+        tx.send(ProcessEvent::Stopped {
+            agent_id: "codex".to_string(),
+            instance_id: "1".to_string(),
+        })
+        .unwrap();
 
-        let (_, sleeping_state) = out_rx.recv_timeout(Duration::from_millis(200)).unwrap();
+        let (_, _, sleeping_state) = out_rx.recv_timeout(Duration::from_millis(200)).unwrap();
         assert_eq!(sleeping_state, AgentState::Sleeping);
 
-        let (_, hidden_state) = out_rx.recv_timeout(Duration::from_millis(200)).unwrap();
+        let (_, _, hidden_state) = out_rx.recv_timeout(Duration::from_millis(200)).unwrap();
         assert_eq!(hidden_state, AgentState::Hidden);
     }
 
@@ -133,14 +186,20 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let out_rx = collect_events(rx, Duration::from_millis(60));
 
-        tx.send(ProcessEvent::Stopped("claude".to_string()))
-            .unwrap();
-        let (_, sleeping_state) = out_rx.recv_timeout(Duration::from_millis(200)).unwrap();
+        tx.send(ProcessEvent::Stopped {
+            agent_id: "claude".to_string(),
+            instance_id: "1".to_string(),
+        })
+        .unwrap();
+        let (_, _, sleeping_state) = out_rx.recv_timeout(Duration::from_millis(200)).unwrap();
         assert_eq!(sleeping_state, AgentState::Sleeping);
 
-        tx.send(ProcessEvent::Started("claude".to_string()))
-            .unwrap();
-        let (_, active_state) = out_rx.recv_timeout(Duration::from_millis(200)).unwrap();
+        tx.send(ProcessEvent::Started {
+            agent_id: "claude".to_string(),
+            instance_id: "1".to_string(),
+        })
+        .unwrap();
+        let (_, _, active_state) = out_rx.recv_timeout(Duration::from_millis(200)).unwrap();
         assert_eq!(active_state, AgentState::Active);
 
         let unexpected = out_rx.recv_timeout(Duration::from_millis(150));
@@ -153,20 +212,64 @@ mod tests {
     #[test]
     fn shared_states_reflects_latest_transition() {
         let (tx, rx) = mpsc::channel();
-        let (out_tx, out_rx) = mpsc::channel::<(String, AgentState)>();
+        let (out_tx, out_rx) = mpsc::channel::<(String, String, AgentState)>();
         let states = run_with_sleep_duration(
             rx,
-            move |id: &str, state: AgentState| {
-                let _ = out_tx.send((id.to_string(), state));
+            move |instance_id: &str, agent_id: &str, state: AgentState| {
+                let _ = out_tx.send((instance_id.to_string(), agent_id.to_string(), state));
             },
             Duration::from_millis(50),
         );
 
-        tx.send(ProcessEvent::Started("claude".to_string()))
-            .unwrap();
+        tx.send(ProcessEvent::Started {
+            agent_id: "claude".to_string(),
+            instance_id: "1".to_string(),
+        })
+        .unwrap();
         out_rx.recv_timeout(Duration::from_millis(200)).unwrap();
 
         let snapshot = states.lock().unwrap().clone();
-        assert_eq!(snapshot.get("claude"), Some(&AgentState::Active));
+        assert_eq!(
+            snapshot.get("1"),
+            Some(&InstanceState {
+                agent_id: "claude".to_string(),
+                state: AgentState::Active,
+            })
+        );
+    }
+
+    #[test]
+    fn independent_instances_of_same_agent_track_separately() {
+        let (tx, rx) = mpsc::channel();
+        let out_rx = collect_events(rx, Duration::from_millis(500));
+
+        tx.send(ProcessEvent::Started {
+            agent_id: "claude".to_string(),
+            instance_id: "1".to_string(),
+        })
+        .unwrap();
+        tx.send(ProcessEvent::Started {
+            agent_id: "claude".to_string(),
+            instance_id: "2".to_string(),
+        })
+        .unwrap();
+        out_rx.recv_timeout(Duration::from_millis(200)).unwrap();
+        out_rx.recv_timeout(Duration::from_millis(200)).unwrap();
+
+        tx.send(ProcessEvent::Stopped {
+            agent_id: "claude".to_string(),
+            instance_id: "1".to_string(),
+        })
+        .unwrap();
+        let (stopped_instance, _, sleeping_state) =
+            out_rx.recv_timeout(Duration::from_millis(200)).unwrap();
+        assert_eq!(stopped_instance, "1");
+        assert_eq!(sleeping_state, AgentState::Sleeping);
+
+        let unexpected = out_rx.recv_timeout(Duration::from_millis(100));
+        assert!(
+            unexpected.is_err(),
+            "instance 2 should be unaffected by instance 1 stopping"
+        );
     }
 }

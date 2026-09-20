@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
@@ -11,8 +11,14 @@ pub const POLL_INTERVAL: Duration = Duration::from_millis(1000);
 
 #[derive(Debug, Clone)]
 pub enum ProcessEvent {
-    Started(String),
-    Stopped(String),
+    Started {
+        agent_id: String,
+        instance_id: String,
+    },
+    Stopped {
+        agent_id: String,
+        instance_id: String,
+    },
 }
 
 fn normalize(name: &str) -> String {
@@ -21,42 +27,59 @@ fn normalize(name: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn agent_is_running(agent: &AgentConfig, running_names: &[String]) -> bool {
-    agent.process_names.iter().any(|configured| {
-        let configured = normalize(configured);
-        running_names.contains(&configured)
-    })
+fn matching_pids(agent: &AgentConfig, processes: &[(u32, String)]) -> HashSet<u32> {
+    let configured: Vec<String> = agent.process_names.iter().map(|n| normalize(n)).collect();
+    processes
+        .iter()
+        .filter(|(_, name)| configured.contains(name))
+        .map(|(pid, _)| *pid)
+        .collect()
 }
 
 pub fn spawn(agents: Vec<AgentConfig>, tx: Sender<ProcessEvent>) {
     thread::spawn(move || {
         let mut system = System::new();
-        let mut alive: HashSet<String> = HashSet::new();
+        let mut alive: HashMap<String, HashSet<u32>> = HashMap::new();
 
         loop {
             system.refresh_processes(ProcessesToUpdate::All, true);
 
-            let running_names: Vec<String> = system
+            let processes: Vec<(u32, String)> = system
                 .processes()
                 .values()
-                .map(|process| normalize(&process.name().to_string_lossy()))
+                .map(|process| {
+                    (
+                        process.pid().as_u32(),
+                        normalize(&process.name().to_string_lossy()),
+                    )
+                })
                 .collect();
 
             for agent in &agents {
-                let is_running = agent_is_running(agent, &running_names);
-                let was_alive = alive.contains(&agent.id);
+                let current = matching_pids(agent, &processes);
+                let previous = alive.entry(agent.id.clone()).or_default();
 
-                if is_running && !was_alive {
-                    alive.insert(agent.id.clone());
-                    if tx.send(ProcessEvent::Started(agent.id.clone())).is_err() {
-                        return;
-                    }
-                } else if !is_running && was_alive {
-                    alive.remove(&agent.id);
-                    if tx.send(ProcessEvent::Stopped(agent.id.clone())).is_err() {
+                for &pid in current.difference(previous) {
+                    let event = ProcessEvent::Started {
+                        agent_id: agent.id.clone(),
+                        instance_id: pid.to_string(),
+                    };
+                    if tx.send(event).is_err() {
                         return;
                     }
                 }
+
+                for &pid in previous.difference(&current) {
+                    let event = ProcessEvent::Stopped {
+                        agent_id: agent.id.clone(),
+                        instance_id: pid.to_string(),
+                    };
+                    if tx.send(event).is_err() {
+                        return;
+                    }
+                }
+
+                *previous = current;
             }
 
             thread::sleep(POLL_INTERVAL);
@@ -79,28 +102,39 @@ mod tests {
     #[test]
     fn matches_exact_process_name() {
         let a = agent(&["claude"]);
-        let running = vec!["claude".to_string(), "zsh".to_string()];
-        assert!(agent_is_running(&a, &running));
+        let processes = vec![(1, "claude".to_string()), (2, "zsh".to_string())];
+        assert_eq!(matching_pids(&a, &processes), HashSet::from([1]));
     }
 
     #[test]
     fn does_not_match_unrelated_process() {
         let a = agent(&["codex"]);
-        let running = vec!["claude".to_string(), "zsh".to_string()];
-        assert!(!agent_is_running(&a, &running));
+        let processes = vec![(1, "claude".to_string()), (2, "zsh".to_string())];
+        assert!(matching_pids(&a, &processes).is_empty());
     }
 
     #[test]
     fn matches_windows_exe_suffix() {
         let a = agent(&["claude"]);
-        let running = vec![normalize("claude.exe")];
-        assert!(agent_is_running(&a, &running));
+        let processes = vec![(1, normalize("claude.exe"))];
+        assert_eq!(matching_pids(&a, &processes), HashSet::from([1]));
     }
 
     #[test]
     fn matches_case_insensitively() {
         let a = agent(&["Claude"]);
-        let running = vec![normalize("claude")];
-        assert!(agent_is_running(&a, &running));
+        let processes = vec![(1, normalize("claude"))];
+        assert_eq!(matching_pids(&a, &processes), HashSet::from([1]));
+    }
+
+    #[test]
+    fn matches_multiple_instances_of_same_agent() {
+        let a = agent(&["claude"]);
+        let processes = vec![
+            (1, "claude".to_string()),
+            (2, "claude".to_string()),
+            (3, "zsh".to_string()),
+        ];
+        assert_eq!(matching_pids(&a, &processes), HashSet::from([1, 2]));
     }
 }
