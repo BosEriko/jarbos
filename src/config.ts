@@ -21,7 +21,7 @@ export const AGENT_CONFIGS: AgentDisplayConfig[] = [
 ];
 
 export const AVATAR_SIZE = 64;
-export const BOTTOM_MARGIN = 24;
+export const BOTTOM_MARGIN = 0;
 export const FADE_OUT_MS = 600;
 
 export const DUCK_NAMES: string[] = [

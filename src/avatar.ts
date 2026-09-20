@@ -8,13 +8,16 @@ import { Movement } from "./movement";
 const GRAVITY_PX_PER_MS2 = 0.0015;
 
 const DUCK_SVG = `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" class="avatar-duck">
+  <ellipse class="duck-shadow" cx="30" cy="61" rx="20" ry="2.5" fill="rgba(0,0,0,0.22)" />
+  <path class="duck-foot duck-foot-back" d="M19 53 H22 V57 L26 57 Q28 57 27 58.5 Q31 58 29 60 Q31 62 27 62 H19 Q16 62 17 60 L19 58 Z" fill="#e58b1b" />
+  <path class="duck-foot duck-foot-front" d="M33 53 H36 V57 L40 57 Q42 57 41 58.5 Q45 58 43 60 Q45 62 41 62 H33 Q30 62 31 60 L33 58 Z" fill="#f5a623" />
+  <g class="duck-body">
   <ellipse cx="30" cy="42" rx="22" ry="15" fill="currentColor" />
   <circle cx="44" cy="24" r="13" fill="currentColor" />
   <path d="M55 21 Q66 23 57 28 Q52 26 55 21 Z" fill="#f5a623" />
   <circle cx="47" cy="20" r="2.2" fill="#222" />
-  <ellipse cx="24" cy="44" rx="9" ry="6" fill="rgba(0,0,0,0.1)" />
-  <path d="M14 56 L20 60 L24 56 Z" fill="#f5a623" />
-  <path d="M28 56 L34 60 L38 56 Z" fill="#f5a623" />
+  <ellipse class="duck-wing" cx="24" cy="44" rx="9" ry="6" fill="rgba(0,0,0,0.16)" />
+  </g>
 </svg>`;
 
 function randomDuckName(): string {
@@ -53,6 +56,7 @@ export class Avatar {
 
     this.root = document.createElement("div");
     this.root.className = "avatar";
+    this.root.dataset.state = this.state;
     this.root.style.setProperty("--accent", config.accentColor);
 
     const label = document.createElement("div");

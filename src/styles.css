@@ -22,7 +22,7 @@ body {
 .avatar {
   position: absolute;
   left: 0;
-  bottom: var(--avatar-bottom-margin, 24px);
+  bottom: var(--avatar-bottom-margin, 0px);
   width: var(--avatar-size, 64px);
   display: flex;
   flex-direction: column;
@@ -46,11 +46,17 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 11px;
   font-weight: 600;
-  color: var(--accent, #333);
-  text-shadow:
-    0 0 3px rgba(255, 255, 255, 0.9),
-    0 0 3px rgba(255, 255, 255, 0.9);
-  margin-bottom: 2px;
+  line-height: 16px;
+  color: #fff;
+  background: #20252b;
+  border: 1px solid #737b85;
+  border-radius: 5px;
+  padding: 1px 5px;
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 1px;
   white-space: nowrap;
 }
 
@@ -64,38 +70,95 @@ body {
   display: block;
   width: 100%;
   height: 100%;
-  transition: transform 0.15s ease;
 }
 
 .avatar-duck.facing-left {
   transform: scaleX(-1);
 }
 
-.avatar[data-state="active"] .avatar-sprite.is-walking {
-  animation: walk-bob 0.5s ease-in-out infinite;
+.duck-body {
+  transform-origin: 30px 56px;
 }
 
-.avatar[data-state="sleeping"] .avatar-sprite {
-  animation: sleep-breathe 2.2s ease-in-out infinite;
+.duck-wing {
+  transform-origin: 24px 44px;
+}
+
+.avatar[data-state="active"] .duck-body {
+  animation: idle-breathe 1.8s ease-in-out infinite;
+}
+
+.avatar[data-state="active"] .is-walking .duck-body {
+  animation: walk-waddle 0.5s ease-in-out infinite;
+}
+
+.avatar[data-state="active"] .is-walking .duck-foot {
+  animation: foot-step 0.5s ease-in-out infinite;
+}
+
+.avatar[data-state="active"] .is-walking .duck-foot-front {
+  animation-delay: -0.25s;
+}
+
+.avatar[data-state="active"] .is-walking .duck-wing {
+  animation: wing-swing 0.5s ease-in-out infinite;
+}
+
+.avatar[data-state="sleeping"] .duck-body {
+  animation: idle-breathe 2.8s ease-in-out infinite;
   filter: grayscale(0.7) brightness(0.85);
 }
 
-@keyframes walk-bob {
+.avatar.is-dragging .duck-body,
+.avatar.is-dragging .duck-foot,
+.avatar.is-dragging .duck-wing {
+  animation: none;
+}
+
+@keyframes walk-waddle {
   0%,
   100% {
-    transform: translateY(0);
+    transform: rotate(-3deg);
   }
   50% {
-    transform: translateY(-4px);
+    transform: translateY(-1px) rotate(3deg);
   }
 }
 
-@keyframes sleep-breathe {
+@keyframes idle-breathe {
   0%,
   100% {
     transform: scale(1);
   }
   50% {
-    transform: scale(0.94);
+    transform: scale(1.025, 0.95);
+  }
+}
+
+@keyframes foot-step {
+  0%,
+  100% {
+    transform: translateX(-2px);
+  }
+  50% {
+    transform: translate(2px, -3px);
+  }
+}
+
+@keyframes wing-swing {
+  0%,
+  100% {
+    transform: rotate(-8deg);
+  }
+  50% {
+    transform: rotate(8deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avatar[data-state] .avatar-sprite .duck-body,
+  .avatar[data-state] .avatar-sprite .duck-foot,
+  .avatar[data-state] .avatar-sprite .duck-wing {
+    animation: none;
   }
 }
