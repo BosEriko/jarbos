@@ -1,5 +1,6 @@
 mod agent;
 mod hit_test;
+mod hook_installer;
 mod hook_watch;
 mod process_monitor;
 mod state_manager;
@@ -150,6 +151,8 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             window::setup_overlay(app.handle())?;
+
+            hook_installer::ensure_installed();
 
             let avatar_rects: AvatarRects = Arc::new(Mutex::new(Vec::new()));
             let dragging: DragFlag = Arc::new(std::sync::atomic::AtomicBool::new(false));
