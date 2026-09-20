@@ -2,6 +2,7 @@ use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum AgentState {
     Hidden,
     Sleeping,
@@ -14,6 +15,7 @@ pub enum AgentState {
 #[derive(Debug, Clone)]
 pub struct AgentConfig {
     pub id: String,
+    #[allow(dead_code)]
     pub name: String,
     pub process_names: Vec<String>,
 }
