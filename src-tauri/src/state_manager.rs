@@ -126,6 +126,31 @@ fn bump_generation(generations: &Generations, instance_id: &str) -> u64 {
     *counter
 }
 
+pub fn set_waiting(
+    states: &SharedStates,
+    instance_id: &str,
+    waiting: bool,
+) -> Option<(String, AgentState)> {
+    let mut map = states.lock().unwrap();
+    let entry = map.get_mut(instance_id)?;
+
+    let should_transition = match entry.state {
+        AgentState::Active if waiting => true,
+        AgentState::Waiting if !waiting => true,
+        _ => false,
+    };
+    if !should_transition {
+        return None;
+    }
+
+    entry.state = if waiting {
+        AgentState::Waiting
+    } else {
+        AgentState::Active
+    };
+    Some((entry.agent_id.clone(), entry.state))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,6 +295,72 @@ mod tests {
         assert!(
             unexpected.is_err(),
             "instance 2 should be unaffected by instance 1 stopping"
+        );
+    }
+
+    fn states_with(instance_id: &str, agent_id: &str, state: AgentState) -> SharedStates {
+        let states: SharedStates = Arc::new(Mutex::new(HashMap::new()));
+        states.lock().unwrap().insert(
+            instance_id.to_string(),
+            InstanceState {
+                agent_id: agent_id.to_string(),
+                state,
+            },
+        );
+        states
+    }
+
+    #[test]
+    fn set_waiting_flips_active_to_waiting() {
+        let states = states_with("1", "claude", AgentState::Active);
+        let result = set_waiting(&states, "1", true);
+        assert_eq!(result, Some(("claude".to_string(), AgentState::Waiting)));
+        assert_eq!(
+            states.lock().unwrap().get("1").unwrap().state,
+            AgentState::Waiting
+        );
+    }
+
+    #[test]
+    fn set_waiting_clears_waiting_back_to_active() {
+        let states = states_with("1", "claude", AgentState::Waiting);
+        let result = set_waiting(&states, "1", false);
+        assert_eq!(result, Some(("claude".to_string(), AgentState::Active)));
+        assert_eq!(
+            states.lock().unwrap().get("1").unwrap().state,
+            AgentState::Active
+        );
+    }
+
+    #[test]
+    fn set_waiting_ignores_unknown_instance() {
+        let states = states_with("1", "claude", AgentState::Active);
+        assert_eq!(set_waiting(&states, "unknown", true), None);
+    }
+
+    #[test]
+    fn set_waiting_ignores_redundant_transitions() {
+        let states = states_with("1", "claude", AgentState::Active);
+        assert_eq!(set_waiting(&states, "1", false), None);
+
+        let states = states_with("1", "claude", AgentState::Waiting);
+        assert_eq!(set_waiting(&states, "1", true), None);
+    }
+
+    #[test]
+    fn set_waiting_does_not_override_sleeping_or_hidden() {
+        let states = states_with("1", "claude", AgentState::Sleeping);
+        assert_eq!(set_waiting(&states, "1", true), None);
+        assert_eq!(
+            states.lock().unwrap().get("1").unwrap().state,
+            AgentState::Sleeping
+        );
+
+        let states = states_with("1", "claude", AgentState::Hidden);
+        assert_eq!(set_waiting(&states, "1", true), None);
+        assert_eq!(
+            states.lock().unwrap().get("1").unwrap().state,
+            AgentState::Hidden
         );
     }
 }

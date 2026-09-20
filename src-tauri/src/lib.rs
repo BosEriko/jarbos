@@ -1,5 +1,6 @@
 mod agent;
 mod hit_test;
+mod hook_watch;
 mod process_monitor;
 mod state_manager;
 mod window;
@@ -18,7 +19,10 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use agent::AgentState;
 use hit_test::{AvatarRect, AvatarRects, DragFlag};
+use process_monitor::CwdByInstance;
 use state_manager::{InstanceState, SharedStates};
+
+const HOOK_EVENTS_DIR_NAME: &str = "hook-events";
 
 const AVATAR_SIZE_PRESETS: [(&str, &str, u32); 4] = [
     ("resize_small", "Small", 40),
@@ -125,7 +129,9 @@ fn end_drag(state: State<'_, DragFlag>) {
 }
 
 #[tauri::command]
-fn get_display_settings(settings: State<'_, Arc<Mutex<DisplaySettings>>>) -> DisplaySettingsPayload {
+fn get_display_settings(
+    settings: State<'_, Arc<Mutex<DisplaySettings>>>,
+) -> DisplaySettingsPayload {
     DisplaySettingsPayload::from(&*settings.lock().unwrap())
 }
 
@@ -167,14 +173,22 @@ pub fn run() {
             let toggle_visibility_item = MenuItem::with_id(
                 app,
                 "toggle_visibility",
-                if initial_settings.ducks_visible { "Hide Ducks" } else { "Show Ducks" },
+                if initial_settings.ducks_visible {
+                    "Hide Ducks"
+                } else {
+                    "Show Ducks"
+                },
                 true,
                 None::<&str>,
             )?;
             let toggle_names_item = MenuItem::with_id(
                 app,
                 "toggle_names",
-                if initial_settings.names_visible { "Hide Names" } else { "Show Names" },
+                if initial_settings.names_visible {
+                    "Hide Names"
+                } else {
+                    "Show Names"
+                },
                 true,
                 None::<&str>,
             )?;
@@ -191,8 +205,10 @@ pub fn run() {
                     )
                 })
                 .collect::<tauri::Result<_>>()?;
-            let size_item_refs: Vec<&dyn IsMenuItem<_>> =
-                size_items.iter().map(|item| item as &dyn IsMenuItem<_>).collect();
+            let size_item_refs: Vec<&dyn IsMenuItem<_>> = size_items
+                .iter()
+                .map(|item| item as &dyn IsMenuItem<_>)
+                .collect();
             let size_submenu = Submenu::with_items(app, "Duck Size", true, &size_item_refs)?;
             let separator = PredefinedMenuItem::separator(app)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -220,8 +236,11 @@ pub fn run() {
                             save_settings(app, &current);
                             current.ducks_visible
                         };
-                        let _ = toggle_visibility_item
-                            .set_text(if visible { "Hide Ducks" } else { "Show Ducks" });
+                        let _ = toggle_visibility_item.set_text(if visible {
+                            "Hide Ducks"
+                        } else {
+                            "Show Ducks"
+                        });
                         let _ = app.emit("toggle-ducks-visibility", visible);
                     }
                     "toggle_names" => {
@@ -231,13 +250,17 @@ pub fn run() {
                             save_settings(app, &current);
                             current.names_visible
                         };
-                        let _ = toggle_names_item
-                            .set_text(if visible { "Hide Names" } else { "Show Names" });
+                        let _ = toggle_names_item.set_text(if visible {
+                            "Hide Names"
+                        } else {
+                            "Show Names"
+                        });
                         let _ = app.emit("toggle-ducks-names", visible);
                     }
                     id => {
-                        if let Some(&(_, _, size)) =
-                            AVATAR_SIZE_PRESETS.iter().find(|(preset_id, _, _)| *preset_id == id)
+                        if let Some(&(_, _, size)) = AVATAR_SIZE_PRESETS
+                            .iter()
+                            .find(|(preset_id, _, _)| *preset_id == id)
                         {
                             {
                                 let mut current = settings.lock().unwrap();
@@ -255,7 +278,8 @@ pub fn run() {
 
             let agents = agent::default_agents();
             let (tx, rx) = mpsc::channel();
-            process_monitor::spawn(agents, tx);
+            let cwd_by_instance: CwdByInstance = Arc::new(Mutex::new(HashMap::new()));
+            process_monitor::spawn(agents, tx, Arc::clone(&cwd_by_instance));
 
             let app_handle = app.handle().clone();
             let states = state_manager::run(rx, move |instance_id, agent_id, state| {
@@ -266,6 +290,28 @@ pub fn run() {
                 };
                 let _ = app_handle.emit("agent-state-changed", payload);
             });
+
+            let hook_events_dir = app.path().app_config_dir()?.join(HOOK_EVENTS_DIR_NAME);
+            std::fs::create_dir_all(&hook_events_dir)?;
+            let hook_states = Arc::clone(&states);
+            let hook_app_handle = app.handle().clone();
+            hook_watch::spawn(
+                hook_events_dir,
+                cwd_by_instance,
+                move |instance_id, waiting| {
+                    if let Some((agent_id, state)) =
+                        state_manager::set_waiting(&hook_states, instance_id, waiting)
+                    {
+                        let payload = AgentStateChangedPayload {
+                            instance_id: instance_id.to_string(),
+                            agent_id,
+                            state,
+                        };
+                        let _ = hook_app_handle.emit("agent-state-changed", payload);
+                    }
+                },
+            );
+
             app.manage(states);
 
             Ok(())

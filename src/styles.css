@@ -118,6 +118,45 @@ body {
   filter: grayscale(0.7) brightness(0.85);
 }
 
+.avatar[data-state="waiting"] .duck-body,
+.avatar[data-state="waiting"] .duck-foot,
+.avatar[data-state="waiting"] .duck-wing {
+  animation: none;
+}
+
+.avatar[data-state="waiting"] .avatar-sprite {
+  position: relative;
+}
+
+.avatar[data-state="waiting"] .avatar-sprite::after {
+  content: "?";
+  position: absolute;
+  top: -14px;
+  right: -4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffcc33;
+  color: #3a2a00;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  animation: question-bounce 1s ease-in-out infinite;
+}
+
+@keyframes question-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
 .avatar.is-dragging .duck-body,
 .avatar.is-dragging .duck-foot,
 .avatar.is-dragging .duck-wing {
@@ -168,6 +207,10 @@ body {
   .avatar[data-state] .avatar-sprite .duck-body,
   .avatar[data-state] .avatar-sprite .duck-foot,
   .avatar[data-state] .avatar-sprite .duck-wing {
+    animation: none;
+  }
+
+  .avatar[data-state="waiting"] .avatar-sprite::after {
     animation: none;
   }
 }

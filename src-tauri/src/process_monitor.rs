@@ -1,13 +1,20 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use sysinfo::{ProcessesToUpdate, System};
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 
 use crate::agent::AgentConfig;
 
+pub type CwdByInstance = Arc<Mutex<HashMap<String, String>>>;
+
 pub const POLL_INTERVAL: Duration = Duration::from_millis(1000);
+
+fn process_refresh_kind() -> ProcessRefreshKind {
+    ProcessRefreshKind::nothing().with_cwd(UpdateKind::Always)
+}
 
 #[derive(Debug, Clone)]
 pub enum ProcessEvent {
@@ -36,13 +43,17 @@ fn matching_pids(agent: &AgentConfig, processes: &[(u32, String)]) -> HashSet<u3
         .collect()
 }
 
-pub fn spawn(agents: Vec<AgentConfig>, tx: Sender<ProcessEvent>) {
+pub fn spawn(agents: Vec<AgentConfig>, tx: Sender<ProcessEvent>, cwd_by_instance: CwdByInstance) {
     thread::spawn(move || {
         let mut system = System::new();
         let mut alive: HashMap<String, HashSet<u32>> = HashMap::new();
 
         loop {
-            system.refresh_processes(ProcessesToUpdate::All, true);
+            system.refresh_processes_specifics(
+                ProcessesToUpdate::All,
+                true,
+                process_refresh_kind(),
+            );
 
             let processes: Vec<(u32, String)> = system
                 .processes()
@@ -55,6 +66,16 @@ pub fn spawn(agents: Vec<AgentConfig>, tx: Sender<ProcessEvent>) {
                 })
                 .collect();
 
+            let cwd_by_pid: HashMap<u32, String> = system
+                .processes()
+                .values()
+                .filter_map(|process| {
+                    process
+                        .cwd()
+                        .map(|cwd| (process.pid().as_u32(), cwd.to_string_lossy().to_string()))
+                })
+                .collect();
+
             for agent in &agents {
                 let current = matching_pids(agent, &processes);
                 let previous = alive.entry(agent.id.clone()).or_default();
@@ -64,6 +85,12 @@ pub fn spawn(agents: Vec<AgentConfig>, tx: Sender<ProcessEvent>) {
                         agent_id: agent.id.clone(),
                         instance_id: pid.to_string(),
                     };
+                    if let Some(cwd) = cwd_by_pid.get(&pid) {
+                        cwd_by_instance
+                            .lock()
+                            .unwrap()
+                            .insert(pid.to_string(), cwd.clone());
+                    }
                     if tx.send(event).is_err() {
                         return;
                     }
@@ -74,6 +101,7 @@ pub fn spawn(agents: Vec<AgentConfig>, tx: Sender<ProcessEvent>) {
                         agent_id: agent.id.clone(),
                         instance_id: pid.to_string(),
                     };
+                    cwd_by_instance.lock().unwrap().remove(&pid.to_string());
                     if tx.send(event).is_err() {
                         return;
                     }
@@ -136,5 +164,38 @@ mod tests {
             (3, "zsh".to_string()),
         ];
         assert_eq!(matching_pids(&a, &processes), HashSet::from([1, 2]));
+    }
+
+    #[test]
+    fn sysinfo_reports_cwd_for_a_running_process() {
+        use std::process::{Command, Stdio};
+
+        let tmp_dir = std::env::temp_dir().join(format!("jarbos_cwd_test_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+
+        let mut child = Command::new("sleep")
+            .arg("2")
+            .current_dir(&tmp_dir)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("failed to spawn test process");
+
+        thread::sleep(Duration::from_millis(300));
+
+        let mut system = System::new();
+        system.refresh_processes_specifics(ProcessesToUpdate::All, true, process_refresh_kind());
+        let cwd = system
+            .process(sysinfo::Pid::from_u32(child.id()))
+            .and_then(|p| p.cwd())
+            .map(|c| c.to_path_buf());
+
+        let expected = tmp_dir.canonicalize().unwrap_or_else(|_| tmp_dir.clone());
+
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+
+        assert_eq!(cwd, Some(expected));
     }
 }
