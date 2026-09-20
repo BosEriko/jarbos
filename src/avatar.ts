@@ -2,10 +2,24 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { AgentState } from "./agent";
 import type { AgentDisplayConfig } from "./config";
-import { AVATAR_SIZE } from "./config";
+import { AVATAR_SIZE, DUCK_NAMES } from "./config";
 import { Movement } from "./movement";
 
 const GRAVITY_PX_PER_MS2 = 0.0015;
+
+const DUCK_SVG = `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" class="avatar-duck">
+  <ellipse cx="30" cy="42" rx="22" ry="15" fill="currentColor" />
+  <circle cx="44" cy="24" r="13" fill="currentColor" />
+  <path d="M55 21 Q66 23 57 28 Q52 26 55 21 Z" fill="#f5a623" />
+  <circle cx="47" cy="20" r="2.2" fill="#222" />
+  <ellipse cx="24" cy="44" rx="9" ry="6" fill="rgba(0,0,0,0.1)" />
+  <path d="M14 56 L20 60 L24 56 Z" fill="#f5a623" />
+  <path d="M28 56 L34 60 L38 56 Z" fill="#f5a623" />
+</svg>`;
+
+function randomDuckName(): string {
+  return DUCK_NAMES[Math.floor(Math.random() * DUCK_NAMES.length)];
+}
 
 export interface AvatarRect {
   x: number;
@@ -20,7 +34,7 @@ export class Avatar {
 
   private readonly root: HTMLDivElement;
   private readonly sprite: HTMLDivElement;
-  private readonly glyph: HTMLSpanElement;
+  private readonly duck: SVGSVGElement;
   private state: AgentState = "active";
 
   private liftY = 0;
@@ -43,15 +57,12 @@ export class Avatar {
 
     const label = document.createElement("div");
     label.className = "avatar-label";
-    label.textContent = config.name;
+    label.textContent = randomDuckName();
 
     this.sprite = document.createElement("div");
     this.sprite.className = "avatar-sprite";
-
-    this.glyph = document.createElement("span");
-    this.glyph.className = "avatar-glyph";
-    this.glyph.textContent = config.glyph;
-    this.sprite.appendChild(this.glyph);
+    this.sprite.innerHTML = DUCK_SVG;
+    this.duck = this.sprite.querySelector("svg") as SVGSVGElement;
 
     this.root.append(label, this.sprite);
     container.appendChild(this.root);
@@ -141,7 +152,7 @@ export class Avatar {
 
   render(): void {
     this.root.style.transform = `translateX(${this.movement.x}px) translateY(${-this.liftY}px)`;
-    this.glyph.classList.toggle("facing-left", this.movement.direction === "left");
+    this.duck.classList.toggle("facing-left", this.movement.direction === "left");
     this.sprite.classList.toggle("is-walking", this.movement.isWalking && !this.isBusy);
   }
 

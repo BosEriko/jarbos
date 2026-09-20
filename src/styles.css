@@ -55,17 +55,19 @@ body {
 }
 
 .avatar-sprite {
-  font-size: 40px;
-  line-height: 1;
-  text-align: center;
+  width: 48px;
+  height: 48px;
+  color: var(--accent, #e8b923);
 }
 
-.avatar-glyph {
-  display: inline-block;
+.avatar-duck {
+  display: block;
+  width: 100%;
+  height: 100%;
   transition: transform 0.15s ease;
 }
 
-.avatar-glyph.facing-left {
+.avatar-duck.facing-left {
   transform: scaleX(-1);
 }
 
